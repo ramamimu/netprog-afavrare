@@ -6,8 +6,8 @@
 4. [] download a file in parallel (OPTIONAL)
 5. [x] follow redirections
 6. [x] show respective HTTP error messages
-7. [] open a web page that is protected by HTTP Basic Authentication
-8. [] can access a web page that is protected behind a login page
+7. [x] open a web page that is protected by HTTP Basic Authentication
+8. [x] can access a web page that is protected behind a login page
 
 **noted!**
 
