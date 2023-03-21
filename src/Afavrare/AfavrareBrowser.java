@@ -78,14 +78,24 @@ public class AfavrareBrowser {
                         this.read_body_response(bis, contentLength);
                     }
 
-
-
                     System.out.printf("\n-------\n%s\n", this.body);
 
                     this.getAllClickableLink();
 
-                    // ask where user want to go
-                    break;
+                    if(this.clickableLink.size() > 0){
+                        // ask where user want to go
+                        System.out.printf("Hello, Where you wanna go?? [Input a number]\n");
+                        String input = scanner.nextLine();
+                        int link = Integer.parseInt(input);
+                        System.out.printf("Going to:%s eh?\n", this.clickableLink.get(link));
+                        this.make_send_http_request(bos, "GET", this.clickableLink.get(link));
+                    }else{
+                        System.out.printf("No more link syre\n");
+                        break;
+                    }
+
+
+
                 }else if(statusCode.charAt(0) == '3'){
                     // redirect
                     boolean didRedirect = this.handleRedirection(bos);
@@ -228,7 +238,8 @@ public class AfavrareBrowser {
                             if(end < 0){
                                 end = response.length();
                             }
-                            chunkLen = Integer.parseInt(response.substring(0, end));
+//                            System.out.printf("yow, %s with end:%d\n", response.substring(0, end), end);
+                            chunkLen = Integer.parseInt(response.substring(0, end), 16);
                             isOk=true;
                             break;
                         }
@@ -237,6 +248,7 @@ public class AfavrareBrowser {
                             if(response.length()==2){
                                 response="";
                             }else{
+//                                System.out.printf("The res len:%d\n", response.length());
                                 break;
                             }
                         }
@@ -270,19 +282,12 @@ public class AfavrareBrowser {
             System.out.printf("%s\n", redirectUrl);
 
             // find the location relative from the host
-            int indexHost = redirectUrl.indexOf(this.host);
-            String protocol = redirectUrl.substring(0, indexHost);
-            if(protocol.contains("https")){
+            if(redirectUrl.contains("https")){
                 System.out.printf("But it is https :(\n");
                 return false;
-            }else{
-                System.out.printf("Protoc: %s\n", protocol);
             }
 
-            int indexStartLoc = indexHost+this.host.length();
-            String location = redirectUrl.substring(indexStartLoc);
-            System.out.printf("Loc: %s\n", location);
-
+            String location = this.getLocation(redirectUrl);
             this.make_send_http_request(bos,"GET", location);
             doRedirect=true;
             this.body="";
@@ -366,6 +371,18 @@ public class AfavrareBrowser {
         }
     }
 
+    private String getLocation(String link){
+        // find the location relative from the host
+        int indexHost = link.indexOf(this.host);
+        int indexStartLoc = indexHost+this.host.length();
+        String location = link.substring(indexStartLoc);
+        if(location.endsWith("\"")){
+            location = location.substring(0, location.length()-1);
+        }
+//        System.out.printf("Loc: %s\n", location);
+        return location;
+    }
+
     public void getAllClickableLink(){
         Pattern pattern = Pattern.compile("href=\"[h/](.*?)\"");
         Matcher matcher = pattern.matcher(this.body.toLowerCase());
@@ -373,7 +390,11 @@ public class AfavrareBrowser {
         int counter = 0;
         while (matcher.find()) {
             String link = matcher.group();
-            this.clickableLink.add(link);
+            //cek if it is http or https
+            if(link.contains("https")){
+                continue;
+            }
+            this.clickableLink.add(this.getLocation(link));
             System.out.printf("#%d: %s\n", counter, link);
             counter+=1;
         }
