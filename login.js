@@ -13,7 +13,8 @@ const createSocket = async (theUrl) => {
   const client = await net.createConnection({ port: port, host: url }, () => {
     // access the protected page without cookie
     client.write(`GET /userinfo.php HTTP/1.1\r\nHost: testphp.vulnweb.com\r\n\r\n`);
-    // set the cookie
+
+    // use set in the cookie
     // client.write(
     //   `POST /userinfo.php HTTP/1.1\r\nHost: testphp.vulnweb.com\r\nCookie: login=test%2Ftest\r\n\r\n`
     // );

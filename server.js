@@ -3,12 +3,12 @@ const fs = require("fs");
 
 // success
 // const url = "www.example.com";
-// const url = "monta.if.its.ac.id"; // index.php/berita/lihatBerita
+// const url = "monta.if.its.ac.id/index.php/berita/lihatBerita"; // index.php/berita/lihatBerita
 // const url = "info.cern.ch";
 // const url = "web.simmons.edu";
 
 // redirection
-const url = "sublimebeautifulmajesticverse.neverssl.com";
+// const url = "sublimebeautifulmajesticverse.neverssl.com";
 
 // failed
 // const url = "intip.in";
@@ -33,7 +33,16 @@ let chunks = "";
 
 // Create a TCP socket
 const createSocket = async (theUrl) => {
-  const client = await net.createConnection({ port: port, host: url }, () => {
+  let path = "/";
+  if (theUrl.includes("/")) {
+    const prefixEndIndex = theUrl.indexOf("/");
+    prefix = theUrl.slice(prefixEndIndex);
+    path = theUrl.slice(prefixEndIndex, theUrl.length);
+    path += "/";
+
+    theUrl = theUrl.slice(0, prefixEndIndex);
+  }
+  const client = await net.createConnection({ port: port, host: theUrl }, () => {
     console.log("Connected to server!");
 
     header = "";
@@ -43,22 +52,11 @@ const createSocket = async (theUrl) => {
     texts = [];
     anchors = [];
 
-    let path = "/";
-    if (theUrl.includes("/")) {
-      const prefixEndIndex = theUrl.indexOf("/");
-      prefix = theUrl.slice(prefixEndIndex);
-      path = theUrl.slice(prefixEndIndex, theUrl.length);
-      path += "/";
-
-      theUrl = theUrl.slice(0, prefixEndIndex);
-    }
-
     // Extract the prefix
     const prefixEndIndex = theUrl.indexOf(".");
     prefix = theUrl.slice(0, prefixEndIndex);
 
     client.write(`GET ${path} HTTP/1.1\r\nHost: ${theUrl}\r\n\r\n`);
-    // client.write(`GET /index.php/berita/lihatBerita HTTP/1.1\r\nHost: ${url}\r\n\r\n`);
   });
 
   client.on("data", async (data) => {
@@ -81,7 +79,6 @@ const createSocket = async (theUrl) => {
 
     if (header.length) {
       const headers = header.split("\r\n");
-      // console.log("========== Headers:\n", headers);
       // first rule
       const fRule = "HTTP/"; // +4 chars
 
