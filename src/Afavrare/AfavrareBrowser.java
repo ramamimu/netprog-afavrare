@@ -108,11 +108,23 @@ public class AfavrareBrowser {
     private boolean askWhereToGo(){
         if(this.clickableLink.size() > 0){
             // ask where user want to go
-            System.out.printf("Hello, Where you wanna go?? [Input a number (put negative or more than available link to stop]\n");
+            System.out.printf("Hello, Where you wanna go?? [Input a number (put negative for custom method and cookies) or more than available link to stop]\n");
             Scanner scanner = new Scanner(System.in);
             String input = scanner.nextLine();
             int link = Integer.parseInt(input);
-            if(link < 0 || link > this.clickableLink.size()){
+            if(link < 0){
+                // ok boys, lets do this
+                System.out.printf("Method syre:\n");
+                String method = scanner.nextLine();
+                System.out.printf("What about location sire:\n");
+                String loc = scanner.nextLine();
+                System.out.printf("Hmm, i see, any cookies [no for no, {cookies} for yes]:\n");
+                String cookie = scanner.nextLine();
+                String msg = this.make_http_request_msg(method, loc, cookie);
+                this.send_http_request(msg);
+                return true;
+            }
+            if(link > this.clickableLink.size()){
                 // stop dari user minta stop
                 return false;
             }
@@ -184,7 +196,7 @@ public class AfavrareBrowser {
         String[] splitslash = location.split("/");
         for(int i = 0;i<splitslash.length;i++){
             // cek apakah dia layak masuk
-            if(splitslash[i].contains("html")){
+            if(splitslash[i].contains("html") || splitslash[i].contains("php")){
                 break;
             }
             else{
@@ -223,6 +235,15 @@ public class AfavrareBrowser {
         return success;
     }
 
+    private String make_http_request_msg(String method, String pathToResource, String cookies){
+        String msg = "";
+        msg += method + " " + pathToResource + " HTTP/1.1\r\n";
+        msg += "Host: " + this.host + "\r\n";
+        msg += "Cookie: " + cookies + "\r\n";
+        msg += "\r\n\r\n";
+        return msg;
+    }
+
     private String make_http_request_msg(String method, String pathToResource){
         String msg = "";
         msg += method + " " + pathToResource + " HTTP/1.1\r\n";
@@ -233,8 +254,7 @@ public class AfavrareBrowser {
 
     }
 
-    private void make_send_http_request(String method, String pathToResource){
-        String msg = this.make_http_request_msg(method, pathToResource);
+    private void send_http_request(String msg){
         System.out.printf("msg:\n%s\n\n", msg);
         try{
             this.bos.write(msg.getBytes(StandardCharsets.UTF_8), 0, msg.length());
@@ -243,6 +263,11 @@ public class AfavrareBrowser {
         catch (IOException ex){
             System.err.print(ex);
         }
+    }
+
+    private void make_send_http_request(String method, String pathToResource){
+        String msg = this.make_http_request_msg(method, pathToResource);
+        this.send_http_request(msg);
     }
 
     private boolean downloadFile(int contentLength){
@@ -485,6 +510,10 @@ public class AfavrareBrowser {
             String host = this.getHost(redirectUrl);
             String location = this.getLocation(redirectUrl);
 
+            if(!location.startsWith("/")){
+                location = "/" + location;
+            }
+
             // check if we redirect to same loc
             if(location.equals(this.currentLocation) && host.equals(this.host)) {
                 System.out.printf("Redirected to the same location, stop\n");
@@ -631,13 +660,14 @@ public class AfavrareBrowser {
                     link = link.substring(0, link.length()-1);
                 }
 
+                // gabungin ma cur loc
+                link = this.currentLocation + link;
+
                 // silang in awal
                 if(!link.startsWith("/")){
                     link = "/" + link;
                 }
 
-                // gabungin ma cur loc
-                link = this.currentLocation + link;
                 System.out.printf("%s\n", link);
             }
 
