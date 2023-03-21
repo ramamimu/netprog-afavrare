@@ -107,12 +107,10 @@ public class AfavrareBrowser {
                         String dst = this.clickableLink.get(link);
                         String host = this.hostsLink.get(link);
                         System.out.printf("Going to:%s from %s eh?\n", dst, host);
-
                         boolean success = this.changeConnection(host, dst);
                         if(!success){
                             break;
                         }
-
                         this.make_send_http_request("GET", dst);
                     }else{
                         System.out.printf("No more link syre\n");
@@ -155,10 +153,15 @@ public class AfavrareBrowser {
     }
 
     private boolean changeConnection(String host, String location){
+        if(host.equals(this.host)){
+            return true; // no need change
+        }
+
         this.currentLocation = location;
         this.host=host;
         boolean success=false;
         try{
+
             this.socket = new Socket(this.host, 80);
             this.bos = new BufferedOutputStream(this.socket.getOutputStream());
             this.bis = new BufferedInputStream(this.socket.getInputStream());
@@ -464,10 +467,19 @@ public class AfavrareBrowser {
 
     private String getHost(String link){
         int indexPisah = link.indexOf("://");
+        if(indexPisah == -1){
+            // ok maybe file biasa,
+            System.out.printf("no syre, this no host, so host is cur host\n");
+            return this.host;
+        }
         int indexSlash = link.indexOf("/", indexPisah+3);
         if(indexSlash==-1)indexSlash=link.length();
 //        System.out.printf("ok host is: %s in %s\n", link.substring(indexPisah+3, indexSlash), link);
-        return link.substring(indexPisah+3, indexSlash);
+        String host = link.substring(indexPisah+3, indexSlash);
+        if(host.endsWith("\"")){
+            host  = host.substring(0, host.length()-1);
+        }
+        return host;
     }
 
     private String getLocation(String link){
@@ -475,6 +487,11 @@ public class AfavrareBrowser {
 
         // find the location relative from the host
         int indexHost = link.indexOf(host);
+        if(indexHost == -1){
+            // ok maybe ini file biasa
+            System.out.printf("ze host: %s, so the loc: %s\n", host, link);
+            return link;
+        }
         int indexStartLoc = indexHost+host.length();
         String location = link.substring(indexStartLoc);
         if(location.endsWith("\"")){
@@ -488,20 +505,33 @@ public class AfavrareBrowser {
     }
 
     public void getAllClickableLink(){
-        Pattern pattern = Pattern.compile("href=\"[h/](.*?)\"");
-        Matcher matcher = pattern.matcher(this.body.toLowerCase());
-        System.out.printf("Here are all clickable link syre\n");
-        int counter = 0;
-        while (matcher.find()) {
-            String link = matcher.group();
-            //cek if it is http or https
-            if(link.contains("https")){
+        int idStart = 0;
+        int idHref = 0;
+        int id = 0;
+        while(idStart < this.body.length()){
+            idHref = this.body.indexOf("href=", idStart);
+            if(idHref==-1){
+                break;
+            }
+            int idClose = this.body.indexOf(">", idHref+5);
+            idStart=idClose;
+
+            String hrefline = this.body.substring(idHref, idClose);
+            // split spasi in case
+            String[] splitspace = hrefline.split(" ");
+            hrefline = splitspace[0];
+            if(hrefline.contains("https")){
                 continue;
             }
-            this.clickableLink.add(this.getLocation(link));
-            this.hostsLink.add(this.getHost(link));
-            System.out.printf("#%d: %s\n", counter, link);
-            counter+=1;
+            if(hrefline.contains("#")){
+                continue;
+            }
+
+            System.out.printf("#%d: %s\n", id, hrefline);
+            id+=1;
+            this.clickableLink.add(this.getLocation(hrefline));
+            this.hostsLink.add(this.getHost(hrefline));
+
         }
     }
 
