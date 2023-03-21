@@ -16,11 +16,18 @@ public class AfavrareBrowser {
     public String header;
     public String body;
     public String host;
+    public String currentLocation;
     public ArrayList<String> clickableLink;
+    public ArrayList<String> hostsLink;
+    public int waitCounter;
+    public BufferedInputStream bis;
+    public BufferedOutputStream bos;
 
     // Constructor nya
     public AfavrareBrowser(){
         this.clickableLink = new ArrayList<String>();
+        this.waitCounter=0;
+        this.hostsLink = new ArrayList<String>();
     }
 
 
@@ -37,16 +44,21 @@ public class AfavrareBrowser {
         // connect time after got user input
         try{
             this.socket = new Socket(this.host, port);
-            this.socket.setSoTimeout(3000); // timeout after 3 seconds
+            this.socket.setSoTimeout(5000); // timeout after 3 seconds
 
             // chaining socket's input stream to buffered input stream so that we are able to read more than 1 byte
-            BufferedOutputStream bos = new BufferedOutputStream(this.socket.getOutputStream());
-            BufferedInputStream bis = new BufferedInputStream(this.socket.getInputStream());
+            this.bos = new BufferedOutputStream(this.socket.getOutputStream());
+            this.bis = new BufferedInputStream(this.socket.getInputStream());
 
-            this.make_send_http_request(bos, "GET", "/");
+            this.make_send_http_request("GET", "/");
+            this.currentLocation="/";
             while(true){
+                // clear clickable link
+                this.clickableLink.clear();
+                this.hostsLink.clear();
+
                 // read the response
-                this.read_header_response(bis);
+                this.read_header_response();
 
                 // ok, separate the body that accidentally got in header
                 this.extractBody();
@@ -66,29 +78,42 @@ public class AfavrareBrowser {
                         // ok read berapa chunk need to be read
                         int chunkLen = this.getChunkLength();
 
+                        // baca the rest of the body chunk-style
                         while(chunkLen > 0){
-                            this.read_body_response(bis, chunkLen);
-                            chunkLen = this.read_chunk_len(bis);
+                            this.read_body_response(chunkLen);
+                            chunkLen = this.read_chunk_len();
                             if(chunkLen != 0){
                                 chunkLen+=this.body.length();
                             }
                         }
 
                     }else{
-                        this.read_body_response(bis, contentLength);
+                        this.read_body_response(contentLength);
                     }
 
                     System.out.printf("\n-------\n%s\n", this.body);
+                    this.waitCounter=0;
 
                     this.getAllClickableLink();
 
                     if(this.clickableLink.size() > 0){
                         // ask where user want to go
-                        System.out.printf("Hello, Where you wanna go?? [Input a number]\n");
+                        System.out.printf("Hello, Where you wanna go?? [Input a number (put negative or more than available link to stop]\n");
                         String input = scanner.nextLine();
                         int link = Integer.parseInt(input);
-                        System.out.printf("Going to:%s eh?\n", this.clickableLink.get(link));
-                        this.make_send_http_request(bos, "GET", this.clickableLink.get(link));
+                        if(link < 0 || link > this.clickableLink.size()){
+                            break;
+                        }
+                        String dst = this.clickableLink.get(link);
+                        String host = this.hostsLink.get(link);
+                        System.out.printf("Going to:%s from %s eh?\n", dst, host);
+
+                        boolean success = this.changeConnection(host, dst);
+                        if(!success){
+                            break;
+                        }
+
+                        this.make_send_http_request("GET", dst);
                     }else{
                         System.out.printf("No more link syre\n");
                         break;
@@ -98,14 +123,23 @@ public class AfavrareBrowser {
 
                 }else if(statusCode.charAt(0) == '3'){
                     // redirect
-                    boolean didRedirect = this.handleRedirection(bos);
+                    boolean didRedirect = this.handleRedirection();
                     if(! didRedirect){
                         break;
                     }
 
                 }else{
-                    System.out.printf("Status Code: %s\n", statusCode);
-                    break;
+                    if(statusCode.contains("No header")){
+                        System.out.printf("No header, ok waiting again\n");
+                        this.waitCounter +=1;
+                        if(this.waitCounter > 5){
+                            break;
+                        }
+                    }else{
+                        System.out.printf("Status Code: %s\n", statusCode);
+                        break;
+                    }
+
                 }
 
 
@@ -120,6 +154,23 @@ public class AfavrareBrowser {
 
     }
 
+    private boolean changeConnection(String host, String location){
+        this.currentLocation = location;
+        this.host=host;
+        boolean success=false;
+        try{
+            this.socket = new Socket(this.host, 80);
+            this.bos = new BufferedOutputStream(this.socket.getOutputStream());
+            this.bis = new BufferedInputStream(this.socket.getInputStream());
+            success=true;
+            System.out.printf("Change host to %s and loc to %s\n", host, location);
+        }
+        catch (IOException ex){
+            System.err.print(ex);
+        }
+        return success;
+    }
+
     private String make_http_request_msg(String method, String pathToResource){
         String msg = "";
         msg += method + " " + pathToResource + " HTTP/1.1\r\n";
@@ -130,19 +181,19 @@ public class AfavrareBrowser {
 
     }
 
-    private void make_send_http_request(BufferedOutputStream bos, String method, String pathToResource){
+    private void make_send_http_request(String method, String pathToResource){
         String msg = this.make_http_request_msg(method, pathToResource);
         System.out.printf("msg:\n%s\n\n", msg);
         try{
-            bos.write(msg.getBytes(StandardCharsets.UTF_8), 0, msg.length());
-            bos.flush();
+            this.bos.write(msg.getBytes(StandardCharsets.UTF_8), 0, msg.length());
+            this.bos.flush();
         }
         catch (IOException ex){
             System.err.print(ex);
         }
     }
 
-    private void read_header_response(BufferedInputStream bis){
+    private void read_header_response(){
         String response = "";
         byte[] bufferInput = new byte[512];
         int bytesRead = 0;
@@ -171,15 +222,16 @@ public class AfavrareBrowser {
         this.header=response;
     }
 
-    private void read_body_response(BufferedInputStream bis, int contentLength){
+    private void read_body_response(int contentLength){
 //        System.out.printf("ok %d %d\n", contentLength, this.body.length());
         int remainingLength = contentLength - this.body.length();
-        int prevlen = this.body.length();
+        int sizeByte =remainingLength;
         String response = "";
         int bytesRead = 0;
         while(remainingLength > 0){
             remainingLength = contentLength - this.body.length() - response.length();
-            byte[] bufferInput = new byte[remainingLength];
+            sizeByte = Math.min(512, remainingLength);
+            byte[] bufferInput = new byte[sizeByte];
             try{
                 // try to read remaining byte
                 bytesRead = bis.read(bufferInput);
@@ -202,53 +254,74 @@ public class AfavrareBrowser {
             }
 
         }
-        System.out.printf("Done\n");
+//        System.out.printf("Done\n");
         this.body +=response;
 //        System.out.printf("Hasil:\n%s\n", this.body);
 
 //        if(this.body.length() > contentLength){
 //            System.out.printf("Melewati batas!\n");
-//        }
-
+        if(this.body.endsWith("\r\n")){
+//            System.out.printf("Ok cuk, ak makan rn\n");
+            this.body =this.body.substring(0, this.body.length()-2);
+        }
+//        System.out.printf("I eat enough, %d, %d, %s\n", this.body.length(), contentLength, this.body.substring(this.body.length()-30));
     }
 
-    private int read_chunk_len(BufferedInputStream bis){
-        // cek if end with \r\n bodynya
-//        if(this.body.endsWith("\r\n")){
-//            System.out.printf("Iya cuyyy\n");
-//        }
-//        else{
-//            System.out.printf("Kaga, ending:%s\n", this.body.substring(this.body.length()-20));
-//        }
-
+    private int read_chunk_len(){
         boolean isOk=false;
         int chunkLen = 0;
         String response = "";
+        StringBuilder nyempil = new StringBuilder();
         int character;
+
+//        // cek if end with \r\n bodynya
+//        if(!this.body.endsWith("\r\n")){
+////            System.out.printf("Kaga, ending:%s\n", this.body.substring(this.body.length()-20));
+//            // ok mundur cari a
+//            int totalMundur = 0;
+//            for(int i = this.body.length()-1;i>=0;i--){
+//                totalMundur+=1;
+//                if(totalMundur>50){
+//                    break;
+//                }
+//                char curChar = this.body.charAt(i);
+//                if(curChar == '\r'){
+//                    break;
+//                }
+//                nyempil.append(curChar);
+//
+//            }
+//
+////            System.out.printf("nyem: %s\n", nyempil.reverse());
+//
+//        }
+
+
+
+
         while(true){
             // read until \r\n
+//            System.out.printf("Reading...\n");
             try{
                 if(bis.available()>0){
                     character = bis.read();
                     response += (char) character;
-//                    System.out.printf("cur res: %s\n", response);
-                    if(response.contains("\n")){
+//                    System.out.printf("cur res: %s, len:%d\n", response, response.length());
+                    if(response.contains("\r\n")){
                         try{
                             int end = response.length()-2;
-                            if(end < 0){
-                                end = response.length();
-                            }
 //                            System.out.printf("yow, %s with end:%d\n", response.substring(0, end), end);
                             chunkLen = Integer.parseInt(response.substring(0, end), 16);
                             isOk=true;
                             break;
                         }
                         catch (NumberFormatException ex){
-//                            System.out.printf("Res: %s\n", response);
-                            if(response.length()==2){
+//                            System.out.printf("Res: %s, len:%d\n", response, response.length());
+                            if(response.length()<3){
+//                                System.out.printf("Reset\n");
                                 response="";
                             }else{
-//                                System.out.printf("The res len:%d\n", response.length());
+//                                System.out.printf("No reset\n");
                                 break;
                             }
                         }
@@ -263,14 +336,15 @@ public class AfavrareBrowser {
             }
         }
         if(isOk){
-            System.out.printf("we got: %s\n", response);
+//            System.out.printf("we got: %s\n", response);
             chunkLen = Integer.parseInt(response.substring(0, response.length()-2), 16);
+//            System.out.printf("chunklen: %d\n", chunkLen);
             return chunkLen;
         }
         return 0;
     }
 
-    private boolean handleRedirection(BufferedOutputStream bos){
+    private boolean handleRedirection(){
         // cek for url=
         boolean doRedirect = false;
 
@@ -287,8 +361,22 @@ public class AfavrareBrowser {
                 return false;
             }
 
+            String host = this.getHost(redirectUrl);
             String location = this.getLocation(redirectUrl);
-            this.make_send_http_request(bos,"GET", location);
+
+            // check if we redirect to same loc
+            if(location.equals(this.currentLocation) && host.equals(this.host)) {
+                System.out.printf("Redirected to the same location, stop\n");
+                return false;
+            }
+
+
+            boolean success = this.changeConnection(host, location);
+            if(!success){
+                System.out.printf("Fail to redirect\n");
+                return false;
+            }
+            this.make_send_http_request("GET", location);
             doRedirect=true;
             this.body="";
             this.header="";
@@ -303,10 +391,13 @@ public class AfavrareBrowser {
     private String getStatusCode(){
         int indexHTTP = this.header.indexOf("http/1.1");
         if(indexHTTP==-1){
-            return "No header\n";
+            indexHTTP = this.header.indexOf("http/1.0");
+            if(indexHTTP==-1){
+                return "No header\n";
+            }
         }
         String statusCode = this.header.substring(indexHTTP+9, indexHTTP+12);
-        System.out.printf("status code: %s\n", statusCode);
+//        System.out.printf("status code: %s\n", statusCode);
         return statusCode;
     }
 
@@ -371,13 +462,26 @@ public class AfavrareBrowser {
         }
     }
 
+    private String getHost(String link){
+        int indexPisah = link.indexOf("://");
+        int indexSlash = link.indexOf("/", indexPisah+3);
+        if(indexSlash==-1)indexSlash=link.length();
+//        System.out.printf("ok host is: %s in %s\n", link.substring(indexPisah+3, indexSlash), link);
+        return link.substring(indexPisah+3, indexSlash);
+    }
+
     private String getLocation(String link){
+        String host = getHost(link);
+
         // find the location relative from the host
-        int indexHost = link.indexOf(this.host);
-        int indexStartLoc = indexHost+this.host.length();
+        int indexHost = link.indexOf(host);
+        int indexStartLoc = indexHost+host.length();
         String location = link.substring(indexStartLoc);
         if(location.endsWith("\"")){
             location = location.substring(0, location.length()-1);
+        }
+        if(location.equals("")){
+            location="/";
         }
 //        System.out.printf("Loc: %s\n", location);
         return location;
@@ -395,6 +499,7 @@ public class AfavrareBrowser {
                 continue;
             }
             this.clickableLink.add(this.getLocation(link));
+            this.hostsLink.add(this.getHost(link));
             System.out.printf("#%d: %s\n", counter, link);
             counter+=1;
         }
