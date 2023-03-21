@@ -180,12 +180,33 @@ public class AfavrareBrowser {
     }
 
     private boolean changeConnection(String host, String location){
+        String newlocation_minus_page = "";
+        String[] splitslash = location.split("/");
+        for(int i = 0;i<splitslash.length;i++){
+            // cek apakah dia layak masuk
+            if(splitslash[i].contains("html")){
+                break;
+            }
+            else{
+                newlocation_minus_page+=splitslash[i];
+                newlocation_minus_page+="/";
+            }
+        }
+
+        if(!newlocation_minus_page.startsWith("/")){
+            newlocation_minus_page = "/" + newlocation_minus_page;
+        }
+
+        if(newlocation_minus_page.endsWith("/")){
+            newlocation_minus_page = newlocation_minus_page.substring(0, newlocation_minus_page.length()-1);
+        }
+
         if(host.equals(this.host)){
-            this.currentLocation = location;
+            this.currentLocation = newlocation_minus_page;
             return true; // no need change
         }
 
-        this.currentLocation = location;
+        this.currentLocation = newlocation_minus_page;
         this.host=host;
         boolean success=false;
         try{
@@ -225,11 +246,14 @@ public class AfavrareBrowser {
     }
 
     private boolean downloadFile(int contentLength){
-        String filename = this.currentLocation.substring(1);// cutoff the /
+        String[] splitbyslash = this.currentLocation.split("/");
+//        String filename = this.currentLocation.substring(1);// cutoff the /
+        String filename = splitbyslash[splitbyslash.length-1];
+
         System.out.printf("file sir %s, with loc:%s\n", filename, this.currentLocation);
 
         try{
-            FileOutputStream fileOut = new FileOutputStream(filename);
+            OutputStream fileOut = new BufferedOutputStream(new FileOutputStream(filename));
             // masukin body
             System.out.printf("dumping %d bytes\n", this.body.length(), this.body);
             fileOut.write(this.body.getBytes(), 0, this.body.length());
@@ -237,14 +261,22 @@ public class AfavrareBrowser {
 //            byte[] bufferInput = new byte[4096];
             int bytesRead;
             InputStream is = this.socket.getInputStream();
-            byte[] bufferInput = new byte[1024];
+            byte[] bufferInput = new byte[256];
             while(totalByteRead < contentLength){
                 try{
                     bytesRead = is.read(bufferInput); // is faster somehow
+                    System.out.printf("OKKKKK\n");
                     if(bytesRead == -1){
                         break;
                     }
-                    fileOut.write(bufferInput, 0, bytesRead);
+                    try{
+                        fileOut.write(bufferInput, 0, bytesRead);
+                    }
+                    catch (IOException ex){
+                        System.out.printf("CUK\n");
+                        System.err.print(ex);
+                        break;
+                    }
                     totalByteRead+=bytesRead;
                     System.out.printf("Progress: %.2f as in %d/%d\n", (float) (totalByteRead*1.0)/contentLength, totalByteRead, contentLength);
 //                    bytesRead=-5; // cek aja pas error return or no
@@ -256,6 +288,7 @@ public class AfavrareBrowser {
                     System.out.printf("Trying again\n");
                 }
             }
+            System.out.printf("CLOSING\n");
             // nyampe sini berarti telah berakhir
             fileOut.close();
             System.out.printf("Download done\n");
@@ -603,6 +636,9 @@ public class AfavrareBrowser {
                     link = "/" + link;
                 }
 
+                // gabungin ma cur loc
+                link = this.currentLocation + link;
+                System.out.printf("%s\n", link);
             }
 
             return link;
