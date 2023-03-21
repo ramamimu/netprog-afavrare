@@ -17,7 +17,6 @@ public class AfavrareBrowser {
     public String body;
     public String host;
     public ArrayList<String> clickableLink;
-    public int statusCode;
 
     // Constructor nya
     public AfavrareBrowser(){
@@ -48,15 +47,15 @@ public class AfavrareBrowser {
             while(true){
                 // read the response
                 this.read_header_response(bis);
+
+                // ok, separate the body that accidentally got in header
+                this.extractBody();
                 System.out.printf("hdr:\n[%s]\n", this.header);
 
                 // get status code
                 String statusCode = this.getStatusCode();
 
                 if(statusCode.equals("200")){
-                    // ok, separate the body that accidentally got in header
-                    this.extractBody();
-
                     // ok read the remaining body
                     int contentLength = this.getContentLength();
 
@@ -66,21 +65,28 @@ public class AfavrareBrowser {
 
                         // ok read berapa chunk need to be read
                         int chunkLen = this.getChunkLength();
-                        break;
+
+                        while(chunkLen > 0){
+                            this.read_body_response(bis, chunkLen);
+                            chunkLen = this.read_chunk_len(bis);
+                            if(chunkLen != 0){
+                                chunkLen+=this.body.length();
+                            }
+                        }
+
+                    }else{
+                        this.read_body_response(bis, contentLength);
                     }
 
-                    this.read_body_response(bis, contentLength);
 
-                    System.out.printf("%s\n", this.body);
+
+                    System.out.printf("\n-------\n%s\n", this.body);
 
                     this.getAllClickableLink();
 
                     // ask where user want to go
                     break;
                 }else if(statusCode.charAt(0) == '3'){
-                    // pecah header sama body
-                    this.extractBody();
-
                     // redirect
                     boolean didRedirect = this.handleRedirection(bos);
                     if(! didRedirect){
@@ -158,27 +164,98 @@ public class AfavrareBrowser {
     private void read_body_response(BufferedInputStream bis, int contentLength){
 //        System.out.printf("ok %d %d\n", contentLength, this.body.length());
         int remainingLength = contentLength - this.body.length();
+        int prevlen = this.body.length();
         String response = "";
-        byte[] bufferInput = new byte[512];
         int bytesRead = 0;
-        while(response.length() < remainingLength){
+        while(remainingLength > 0){
+            remainingLength = contentLength - this.body.length() - response.length();
+            byte[] bufferInput = new byte[remainingLength];
             try{
-                // try to read 512 byte
+                // try to read remaining byte
                 bytesRead = bis.read(bufferInput);
                 if(bytesRead < 0){
+//                    System.out.printf("Ok ga ada yang bisa dibacalgi\n");
                     break;
                 }else{
+//                    System.out.printf("Happen\n");
                     // ok not -1, some byte readed, append to response
                     response += new String(bufferInput, 0, bytesRead);
+//                    System.out.printf("bd len: %d, cnlen: %d, curresponselen %d, rmlen:%d\n",
+//                            this.body.length(), contentLength, response.length(), remainingLength);
                 }
 
             }
             catch (IOException ex){
-                break;
+                System.out.printf("Some exception happen, go in \n");
+//                System.err.print(ex);
+//                break;
             }
 
         }
+        System.out.printf("Done\n");
         this.body +=response;
+//        System.out.printf("Hasil:\n%s\n", this.body);
+
+//        if(this.body.length() > contentLength){
+//            System.out.printf("Melewati batas!\n");
+//        }
+
+    }
+
+    private int read_chunk_len(BufferedInputStream bis){
+        // cek if end with \r\n bodynya
+//        if(this.body.endsWith("\r\n")){
+//            System.out.printf("Iya cuyyy\n");
+//        }
+//        else{
+//            System.out.printf("Kaga, ending:%s\n", this.body.substring(this.body.length()-20));
+//        }
+
+        boolean isOk=false;
+        int chunkLen = 0;
+        String response = "";
+        int character;
+        while(true){
+            // read until \r\n
+            try{
+                if(bis.available()>0){
+                    character = bis.read();
+                    response += (char) character;
+//                    System.out.printf("cur res: %s\n", response);
+                    if(response.contains("\n")){
+                        try{
+                            int end = response.length()-2;
+                            if(end < 0){
+                                end = response.length();
+                            }
+                            chunkLen = Integer.parseInt(response.substring(0, end));
+                            isOk=true;
+                            break;
+                        }
+                        catch (NumberFormatException ex){
+//                            System.out.printf("Res: %s\n", response);
+                            if(response.length()==2){
+                                response="";
+                            }else{
+                                break;
+                            }
+                        }
+                    }
+                }else{
+                    break;
+                }
+            }
+            catch (IOException ex){
+                System.err.print(ex);
+                break;
+            }
+        }
+        if(isOk){
+            System.out.printf("we got: %s\n", response);
+            chunkLen = Integer.parseInt(response.substring(0, response.length()-2), 16);
+            return chunkLen;
+        }
+        return 0;
     }
 
     private boolean handleRedirection(BufferedOutputStream bos){
@@ -220,8 +297,11 @@ public class AfavrareBrowser {
 
     private String getStatusCode(){
         int indexHTTP = this.header.indexOf("http/1.1");
-        String statusCode = this.header.substring(indexHTTP+10, indexHTTP+13);
-        System.out.printf("s code: %s\n", statusCode);
+        if(indexHTTP==-1){
+            return "No header\n";
+        }
+        String statusCode = this.header.substring(indexHTTP+9, indexHTTP+12);
+        System.out.printf("status code: %s\n", statusCode);
         return statusCode;
     }
 
@@ -247,6 +327,7 @@ public class AfavrareBrowser {
 
     private int getChunkLength(){
         /*
+        dapet chunklength yang udah duluan kebaca
         Body nya:
         \n
         chunk-len
@@ -254,17 +335,32 @@ public class AfavrareBrowser {
         chunk-len
         isi
         */
-        String[] newline = this.body.split("\n");
-        System.out.printf("Ok second line body is: %s\n", newline[1]);
-        return 256;
+        System.out.printf("Getting chunk\n");
+        String[] newline = this.body.split("\r\n");
+        System.out.printf("Ok second line body is %s\n", newline[0]);
+//        System.out.println(newline[1]);
+//        System.out.printf("-----\n");
+//        for(int i = 0;i<newline[1].length();i++){
+//            System.out.printf("#%d: %c\n", i,newline[1].charAt(i));
+//        }
+        int num = Integer.parseInt(newline[0], 16);
+        System.out.printf("In decimal: %d, also, lemme update body\n", num);
+
+        int indexOfChunkLen = this.body.indexOf(newline[0]);
+        this.body = this.body.substring(indexOfChunkLen+newline[0].length()+2);
+        System.out.printf("bd:[%s]\n", this.body);
+        return num;
     }
+
+
 
     private void extractBody(){
         int indexBodyStart = this.header.indexOf("\r\n\r\n");
         if(indexBodyStart != -1){
-            this.body = this.header.substring(indexBodyStart+2);
+            this.body = this.header.substring(indexBodyStart+4);
+//            System.out.printf("bd:[%s]\n", this.body);
             // keep newline in header
-            this.header = this.header.substring(0, indexBodyStart+2).toLowerCase();
+            this.header = this.header.substring(0, indexBodyStart+4).toLowerCase();
         }else{
             this.body="";
         }
