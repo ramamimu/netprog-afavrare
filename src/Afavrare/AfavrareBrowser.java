@@ -58,7 +58,7 @@ public class AfavrareBrowser {
 
                 // ok, separate the body that accidentally got in header
                 this.extractBody();
-                System.out.printf("hdr:\n[%s]\n", this.header);
+//                System.out.printf("hdr:\n[%s]\n", this.header);
 
                 // get status code
                 String statusCode = this.getStatusCode();
@@ -118,6 +118,7 @@ public class AfavrareBrowser {
                 String method = scanner.nextLine();
                 System.out.printf("What about location sire:\n");
                 String loc = scanner.nextLine();
+                this.currentLocation=loc;
                 System.out.printf("Hmm, i see, any cookies [no for no, {cookies} for yes]:\n");
                 String cookie = scanner.nextLine();
                 String msg = this.make_http_request_msg(method, loc, cookie);
@@ -149,7 +150,8 @@ public class AfavrareBrowser {
     private boolean handle_OK(String contentType){
         System.out.printf("Ctype: %s\n", contentType);
         int contentLength = this.getContentLength();
-        if(contentType.contains("text")){
+        boolean debug = false;
+        if(contentType.contains("text") || debug){
             // ok read the remaining body
 
             if(contentLength==-1){
@@ -183,11 +185,14 @@ public class AfavrareBrowser {
 
             // will save it as binary
             boolean success = this.downloadFile(contentLength);
+//            this.read_body_response(contentLength);
+//            bool succes
             if(success){
                 System.out.printf("Finish\n");
                 return this.askWhereToGo();
             }
             return false;
+//            return true;
         }
     }
 
@@ -239,7 +244,9 @@ public class AfavrareBrowser {
         String msg = "";
         msg += method + " " + pathToResource + " HTTP/1.1\r\n";
         msg += "Host: " + this.host + "\r\n";
-        msg += "Cookie: " + cookies + "\r\n";
+        if(!cookies.equals("no")){
+            msg += "Cookie: " + cookies + "\r\n";
+        }
         msg += "\r\n\r\n";
         return msg;
     }
@@ -284,18 +291,33 @@ public class AfavrareBrowser {
             fileOut.write(this.body.getBytes(), 0, this.body.length());
             int totalByteRead = this.body.length();
 //            byte[] bufferInput = new byte[4096];
-            int bytesRead;
+            int bytesRead=-6;
             InputStream is = this.socket.getInputStream();
-            byte[] bufferInput = new byte[256];
+//            byte[] bufferInput = new byte[256];
+//            byte abyte;
+            int totalByteToRead = 256;
             while(totalByteRead < contentLength){
                 try{
-                    bytesRead = is.read(bufferInput); // is faster somehow
+//                    bytesRead = is.read(bufferInput); // is faster somehow
+//                    bytesRead = is.read();
+
+                    totalByteToRead=256;
+                    if(contentLength-totalByteRead < 256){
+                        totalByteToRead=contentLength-totalByteToRead;
+                    }
+                    byte[] bufferInput = new byte[totalByteToRead];
+                    bytesRead = this.bis.read(bufferInput);
                     System.out.printf("OKKKKK\n");
                     if(bytesRead == -1){
+                        System.out.printf("-1 but %d", contentLength-totalByteRead);
                         break;
                     }
                     try{
                         fileOut.write(bufferInput, 0, bytesRead);
+//                        bufferInput[0] = bytesRead;
+//                        Integer a = bytesRead;
+//                        bufferInput[0] = a.byteValue();
+//                        fileOut.write(bufferInput, 0, 1);
                     }
                     catch (IOException ex){
                         System.out.printf("CUK\n");
@@ -303,14 +325,15 @@ public class AfavrareBrowser {
                         break;
                     }
                     totalByteRead+=bytesRead;
-                    System.out.printf("Progress: %.2f as in %d/%d\n", (float) (totalByteRead*1.0)/contentLength, totalByteRead, contentLength);
-//                    bytesRead=-5; // cek aja pas error return or no
+                    System.out.printf("Progress: %.2f as in %d/%d, set ke -5\n", (float) (totalByteRead*1.0)/contentLength, totalByteRead, contentLength);
+                    bytesRead=-5; // cek aja pas error return or no
                 }
                 catch (IOException ex){
                     System.err.print(ex);
 //                    fileOut.close();
 //                    return false;
-                    System.out.printf("Trying again\n");
+                    System.out.printf("Trying again tadi si %d\n", bytesRead);
+//                    System
                 }
             }
             System.out.printf("CLOSING\n");
@@ -382,8 +405,8 @@ public class AfavrareBrowser {
 
             }
             catch (IOException ex){
-                System.out.printf("Some exception happen, go in \n");
-//                System.err.print(ex);
+                System.out.printf("Some exception happen, go in %d\n", remainingLength);
+                System.err.print(ex);
 //                break;
             }
 
