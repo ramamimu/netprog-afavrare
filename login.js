@@ -1,5 +1,7 @@
 const net = require("net");
-const url = "testphp.vulnweb.com";
+// const url = "testphp.vulnweb.com";
+// const url = "http://httpbin.org";
+const url = "httpbin.org";
 
 const port = 80;
 
@@ -12,7 +14,10 @@ let chunks = "";
 const createSocket = async (theUrl) => {
   const client = await net.createConnection({ port: port, host: url }, () => {
     // access the protected page without cookie
-    client.write(`GET /userinfo.php HTTP/1.1\r\nHost: testphp.vulnweb.com\r\n\r\n`);
+    // client.write(`GET /userinfo.php HTTP/1.1\r\nHost: testphp.vulnweb.com\r\n\r\n`);
+    client.write(
+      `GET /basic-auth/foo/bar HTTP/1.1\r\nHost: httpbin.org\r\nAuthorization: Basic Zm9vOmJhcg==\r\n\r\n`
+    );
 
     // use set in the cookie
     // client.write(

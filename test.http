@@ -1,0 +1,1 @@
+GET http://httpbin.org/basic-auth/foo/bar
