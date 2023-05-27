@@ -10,19 +10,33 @@ let header = "";
 let body = "";
 let chunks = "";
 
+// ====================== Get uname and pass from input keyboard ======================
+
 // Create a TCP socket
 const createSocket = async (theUrl) => {
   const client = await net.createConnection({ port: port, host: url }, () => {
-    // access the protected page without cookie
-    // client.write(`GET /userinfo.php HTTP/1.1\r\nHost: testphp.vulnweb.com\r\n\r\n`);
-    client.write(
-      `GET /basic-auth/foo/bar HTTP/1.1\r\nHost: httpbin.org\r\nAuthorization: Basic Zm9vOmJhcg==\r\n\r\n`
-    );
+    console.log("Enter username and password [host url username password] :  ");
+    process.stdin.on("data", (data) => {
+      const input = data.toString().trim().split(" ");
+      const host = input[0];
+      const url = input[1];
+      const uname = input[2];
+      const pass = input[3];
 
-    // use set in the cookie
-    // client.write(
-    //   `POST /userinfo.php HTTP/1.1\r\nHost: testphp.vulnweb.com\r\nCookie: login=test%2Ftest\r\n\r\n`
-    // );
+      const unamePass = `${uname}:${pass}`;
+      let auth = Buffer.from(unamePass).toString("base64");
+
+      // httpbin.org/basic-auth/foo/bar
+      // clue: httpbin.org basic-auth foo bar
+      // client.write(
+      //   `GET /basic-auth/foo/bar HTTP/1.1\r\nHost: httpbin.org\r\nAuthorization: Basic Zm9vOmJhcg==\r\n\r\n`
+      // );
+
+      const request = `GET /${url}/${uname}/${pass} HTTP/1.1\r\nHost: ${host}\r\nAuthorization: Basic ${auth}\r\n\r\n`;
+      console.log(request);
+
+      client.write(request);
+    });
   });
 
   client.on("data", async (data) => {
