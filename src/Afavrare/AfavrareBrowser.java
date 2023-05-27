@@ -4,6 +4,7 @@ import java.io.*;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.Scanner;
 
 public class AfavrareBrowser {
@@ -83,7 +84,7 @@ public class AfavrareBrowser {
                     if(statusCode.contains("No header")){
                         System.out.printf("No header, ok waiting again\n");
                         this.waitCounter +=1;
-                        if(this.waitCounter > 5){
+                        if(this.waitCounter > 50){
                             break;
                         }
                     }else{
@@ -108,10 +109,26 @@ public class AfavrareBrowser {
     private boolean askWhereToGo(){
         if(this.clickableLink.size() > 0){
             // ask where user want to go
-            System.out.printf("Hello, Where you wanna go?? [Input a number (put negative for custom method and cookies) or more than available link to stop]\n");
+            System.out.printf("Hello, Where you wanna go?? [Input a number (put <-1 for custom method and cookies, -1 for auth) or more than available link to stop]\n");
             Scanner scanner = new Scanner(System.in);
             String input = scanner.nextLine();
             int link = Integer.parseInt(input);
+            if(link == -1){
+                // ok boys, lets do this
+                System.out.printf("Method syre:\n");
+                String method = scanner.nextLine();
+                System.out.printf("What about location sire:\n");
+                String loc = scanner.nextLine();
+                this.currentLocation=loc;
+                System.out.printf("Username:");
+                String username = scanner.nextLine();
+                System.out.printf("Password:");
+                String password = scanner.nextLine();
+                String msg = this.make_http_request_msg(method, loc, username, password);
+                this.send_http_request(msg);
+                return true;
+            }
+
             if(link < 0){
                 // ok boys, lets do this
                 System.out.printf("Method syre:\n");
@@ -247,6 +264,21 @@ public class AfavrareBrowser {
         if(!cookies.equals("no")){
             msg += "Cookie: " + cookies + "\r\n";
         }
+        msg += "\r\n\r\n";
+        return msg;
+    }
+
+    private String make_http_request_msg(String method, String pathToResource, String username, String password){
+        String msg = "";
+        msg += method + " " + pathToResource + " HTTP/1.1\r\n";
+        msg += "Host: " + this.host + "\r\n";
+        msg += "Authorization: Basic ";
+
+        // tambah uname password
+        String originalInput = username+":"+password;
+        String encodedString = Base64.getEncoder().encodeToString(originalInput.getBytes());
+
+        msg += encodedString;
         msg += "\r\n\r\n";
         return msg;
     }
